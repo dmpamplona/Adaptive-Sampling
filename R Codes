@@ -1,0 +1,873 @@
+## Estimating COVID-19 Cases in Iloilo City with Adaptive Sampling
+
+
+
+library(reshape2)
+library(igraph)
+library(plotrix)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(gtools)
+library(survey)
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+####          Simulating Data Matrix for Adaptive Sampling          ####
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+
+
+# Import Data for Iloilo COVID-cases
+
+ilo_data <- read.csv("C:\\Users\\David\\Desktop\\FS-con 2020\\Iloilo_City_Cases_Brgy.csv")
+
+
+# Set up True Infection Rate
+# Original 0.4%
+
+
+ilo_data$ad_cases <- ilo_data$cases # 0.4%
+ilo_data$ad_cases # 2%
+ilo_data$ad_cases <- ilo_data$cases*15 # 6%
+
+
+#### AREVALO ####
+
+# (dim = 217*230 = 49910 cells)
+# 12 squares (each with 72*57 = 4104 cells)
+
+
+dat <- subset(ilo_data, ilo_data$district == 1)[1:12,6]
+brrow <- 72
+brcol <- 57
+brcase <- matrix(dat,nrow=3, ncol=4, byrow=TRUE)
+
+
+arevalo <- vector()
+
+for(i in 1:dim(brcase)[1]) {
+  arevalo.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    arevalo.j <- cbind(arevalo.j, br)
+    
+  }
+  
+  arevalo <- rbind(arevalo, arevalo.j)
+}
+
+# Add zeros to complete the desired dimension (217*230)
+
+arevalo <- rbind(arevalo, matrix(rep(0,228),1,228))
+arevalo <- cbind(arevalo, matrix(rep(0,(217*2)),217,2))
+
+
+
+
+#### City Proper ####
+
+# (dim = 295*186 = 54870 cells)
+# 45 squares (each with 32*37 = 1184 cells)  
+
+dat <- subset(ilo_data, ilo_data$district == 2)[,6]
+brrow <- 32
+brcol <- 37
+brcase <- matrix(dat,nrow=9, ncol=5, byrow=TRUE)
+
+
+
+cityproper <- vector()
+
+
+for(i in 1:dim(brcase)[1]) {
+  cityproper.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    cityproper.j <- cbind(cityproper.j, br)
+    
+  }
+  
+  cityproper <- rbind(cityproper, cityproper.j)
+}
+
+# Add zeros to complete the desired dimension (295*186)
+
+cityproper <- rbind(cityproper, matrix(rep(0,(7*185)),7,185))
+cityproper <- cbind(cityproper, matrix(rep(0,295),295,1))
+
+
+
+#### JARO ####
+
+# (dim = 400*281 = 112400 cells)
+# 42 squares (each with 57*46 = 2622 cells)
+
+dat <- subset(ilo_data, ilo_data$district == 3)[,6]
+brrow <- 57
+brcol <- 46
+brcase <- matrix(dat,nrow=7, ncol=6, byrow=TRUE)
+
+
+jaro <- vector()
+
+
+for(i in 1:dim(brcase)[1]) {
+  jaro.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    jaro.j <- cbind(jaro.j, br)
+    
+  }
+  
+  jaro <- rbind(jaro, jaro.j)
+}
+
+# Add zeros to complete the desired dimension (295*186)
+
+jaro <- rbind(jaro, matrix(rep(0,276),1,276))
+jaro <- cbind(jaro, matrix(rep(0,(5*400)),400,5))
+
+
+
+
+#### LAPAZ ####
+
+# (dim = 357*141 = 50337 cells)
+# 24 squares (each with  cells)
+
+dat <- subset(ilo_data, ilo_data$district == 4)[,6]
+brrow <- 44
+brcol <- 47
+brcase <- matrix(dat[1:24],nrow=8, ncol=3, byrow=TRUE)
+
+
+lapaz <- vector()
+
+
+for(i in 1:dim(brcase)[1]) {
+  lapaz.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    lapaz.j <- cbind(lapaz.j, br)
+    
+  }
+  
+  lapaz <- rbind(lapaz, lapaz.j)
+}
+
+
+# Add zeros to complete the desired dimension (295*186)
+
+lapaz <- rbind(lapaz, matrix(rep(0,(5*141)),5,141))
+
+
+
+#### LAPUZ ####
+
+# (dim = 140*230 = 32200 cells)
+# 12 squares (each with 46*37 = 2660 cells)
+
+dat <- subset(ilo_data, ilo_data$district == 5)[,6]
+brrow <- 46
+brcol <- 57
+brcase <- matrix(dat,nrow=3, ncol=4, byrow=TRUE)
+
+
+lapuz <- vector()
+
+
+for(i in 1:dim(brcase)[1]) {
+  lapuz.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    lapuz.j <- cbind(lapuz.j, br)
+    
+  }
+  
+  lapuz <- rbind(lapuz, lapuz.j)
+}
+
+
+# Add zeros to complete the desired dimension (295*186)
+
+lapuz <- rbind(lapuz, matrix(rep(0,(2*228)),2,228))
+lapuz <- cbind(lapuz, matrix(rep(0,(140*2)),140,2))
+
+
+
+
+#### MANDURIAO ####
+
+# (dim = 295*185 = 54575 cells)
+# 18 squares (each with 49*61 cells)
+
+dat <- subset(ilo_data, ilo_data$district == 6)[,6]
+brrow <- 49
+brcol <- 61
+brcase <- matrix(dat,nrow=6, ncol=3, byrow=TRUE)
+
+
+manduriao <- vector()
+
+
+for(i in 1:dim(brcase)[1]) {
+  manduriao.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    manduriao.j <- cbind(manduriao.j, br)
+    
+  }
+  
+  manduriao <- rbind(manduriao, manduriao.j)
+}
+
+
+# Add zeros to complete the desired dimension (295*186)
+
+manduriao <- rbind(manduriao, matrix(rep(0,183),1,183))
+manduriao <- cbind(manduriao, matrix(rep(0,(2*295)),295,2))
+
+
+
+
+#### Molo ####
+
+# (dim = 252*281 = 70812 cells)
+# 25 squares (each with 50*56 cells)
+
+dat <- subset(ilo_data, ilo_data$district == 7)[,6]
+brrow <- 50
+brcol <- 56
+brcase <- matrix(dat,nrow=5, ncol=5, byrow=TRUE)
+
+
+molo <- vector()
+
+
+for(i in 1:dim(brcase)[1]) {
+  molo.j <- vector()
+  
+  for(j in 1:dim(brcase)[2]) {
+    sr.brcase <- sqrt(brcase[i,j])
+    
+    #This next part can be a simulation setting, (0.2) is the "density of spread"
+    dim.brcase <- round(sr.brcase + 0.2*sr.brcase)
+    
+    pos.brcase.row.u <- round(0.5*brrow) + round(0.5*dim.brcase)
+    pos.brcase.row.l <- round(0.5*brrow) - round(0.5*dim.brcase)
+    pos.brcase.col.u <- round(0.5*brcol) + round(0.5*dim.brcase)
+    pos.brcase.col.l <- round(0.5*brcol) - round(0.5*dim.brcase)
+    
+    br <- matrix(rep(0,(brrow*brcol)),brrow,brcol)
+    
+    dim.brcase.s <- (pos.brcase.row.u-pos.brcase.row.l+1)*
+      (pos.brcase.col.u-pos.brcase.col.l+1)
+    
+    set.seed(123*j)
+    br[pos.brcase.row.l:(pos.brcase.row.u),
+       pos.brcase.col.l:(pos.brcase.col.u)] <- rbinom(dim.brcase.s,1,(brcase[i,j]/dim.brcase.s))
+    
+    molo.j <- cbind(molo.j, br)
+    
+  }
+  
+  molo <- rbind(molo, molo.j)
+}
+
+
+# Add zeros to complete the desired dimension (295*186)
+
+molo <- rbind(molo, matrix(rep(0,(2*280)),2,280))
+molo <- cbind(molo, matrix(rep(0,(252)),252,1))
+
+
+
+## Append All districts to Create ILOILO city
+
+iloilo <- matrix(rep(0,(652*652)),652,652)
+iloilo[1:400, 1:281] <- jaro
+iloilo[401:652, 1:281] <- molo
+iloilo[1:295, 282:467] <- cityproper
+iloilo[1:295, 468:652] <- manduriao
+iloilo[296:652, 282:422] <- lapaz
+iloilo[296:512, 423:652] <- arevalo
+iloilo[513:652, 423:652] <- lapuz
+
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+####               Data Frame for SRSWOR and Stratified             ####
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+
+ind.cases <- c(as.vector(jaro),
+              as.vector(molo),
+              as.vector(cityproper),
+              as.vector(manduriao),
+              as.vector(lapaz),
+              as.vector(arevalo),
+              as.vector(lapuz)
+)
+            
+district <- c(rep(1,length(jaro)),
+              rep(2,length(molo)),
+              rep(3,length(cityproper)),
+              rep(4,length(manduriao)),
+              rep(5,length(lapaz)),
+              rep(6,length(arevalo)),
+              rep(7,length(lapuz))
+)
+
+ID <- c(1:length(district))
+iloilo.d <- data.frame(ID, district, ind.cases)
+
+
+
+
+
+
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+####                  Adaptive Sampling Method                      ####
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+
+
+melt.matrix <- function(world){
+  suppressMessages(
+    world %>% 
+      data.frame %>% 
+      melt() %>% 
+      mutate(id = seq_len(nrow(world) * ncol(world)), 
+             x = rep(c(1:ncol(world)),nrow(world)),
+             y = sort(rep(c(1:nrow(world)),ncol(world)))) %>%
+      data.frame() %>% 
+      select(value,id,x,y)
+  )
+}
+
+
+getid <- function(x,y,ncol){return(x + ((y-1) * ncol))}
+
+plotly.adjmatrix <- function(world, name){
+  gg <- melt.matrix(world) %>% 
+    ggplot(aes(x = as.factor(x), 
+               y = as.factor(y),
+               "X" = x,
+               "Y" = y,
+               "ID" = id)) + 
+    geom_raster(aes(fill = value, alpha = value/max(value))) + 
+    scale_fill_gradient(low="grey90",high="red") + 
+    geom_text(aes(label = ifelse(value,value,""))) +
+    theme(panel.background = element_blank(), legend.position = "none") + 
+    labs(x = "X",y = "Y") + ggtitle(name)
+  
+  ggplotly(gg, tooltip = c("X","Y","value","id"))
+}
+
+
+plotly.adjmatrix.id <- function(world, name){
+  gg <- melt.matrix(world) %>% 
+    ggplot(aes(x = as.factor(x), 
+               y = as.factor(y),
+               "value" = value,
+               "X" = x,
+               "Y" = y,
+               "ID" = id)) + 
+    geom_tile(aes(fill = as.factor(id)),color = "black") + 
+    geom_text(aes(label = id)) +
+    theme(panel.background = element_blank(), legend.position = "none") + 
+    labs(x = "X",y = "Y") + ggtitle(paste("Index values of ",name))
+  
+  ggplotly(gg, tooltip = c("X","Y","value","id"))
+}
+
+
+## Creating networks
+
+adjlist <- function(world){
+  nrow <- nrow(world)
+  ncol <- ncol(world)
+  
+  G <- as.vector(world)
+  
+  adj.list <- rep(list(c()),nrow*ncol)  
+  for(index in 1:length(G)){
+    last.column <- index %% ncol == 0
+    first.column <- (index - 1) %% ncol == 0
+    first.row <- index <= ncol
+    last.row <- index > (nrow * ncol - ncol)
+    
+    left <- ifelse(first.column,NA,index - 1)
+    up.left <- ifelse(last.row | first.column,NA,index + ncol - 1)
+    up <- ifelse(last.row,NA,index + ncol)
+    up.right <- ifelse(last.row | last.column, NA,index + ncol + 1)
+    right <- ifelse(last.column, NA, index + 1)
+    down.right <- ifelse(first.row | last.column, NA, index - ncol + 1)
+    down <- ifelse(first.row, NA, index - ncol)
+    down.left <- ifelse(first.row | first.column , NA, index - ncol - 1)
+    
+    adjlist.i <- c()
+    if(!is.na(left))
+      adjlist.i <- c(adjlist.i,"W" = left)
+    if(!is.na(up.left))
+      adjlist.i <- c(adjlist.i,"NW" = up.left)
+    if(!is.na(up))
+      adjlist.i <- c(adjlist.i,"N" = up)
+    if(!is.na(up.right))
+      adjlist.i <- c(adjlist.i,"NE" = up.right)
+    if(!is.na(right))
+      adjlist.i <- c(adjlist.i,"E"= right)
+    if(!is.na(down.left))
+      adjlist.i <- c(adjlist.i,"SE" = down.left)
+    if(!is.na(down))
+      adjlist.i <- c(adjlist.i,"S" = down)
+    if(!is.na(down.right))
+      adjlist.i <- c(adjlist.i,"SW" = down.right)
+    
+    adj.list[[index]] <- adjlist.i
+  }
+  return(adj.list)
+}
+
+adjlist.adaptive <- function(world){
+  nrow <- nrow(world)
+  ncol <- ncol(world)
+  
+  G <- as.vector(world)
+  
+  adj.list <- rep(list(c()),nrow*ncol)  
+  for(index in 1:length(G)){
+    if(G[index] != 0) {
+      last.column <- index %% ncol == 0
+      first.column <- (index - 1) %% ncol == 0
+      first.row <- index <= ncol
+      last.row <- index > (nrow * ncol - ncol)
+      
+      left <- ifelse(first.column,NA,index - 1)
+      up.left <- ifelse(last.row | first.column,NA,index + ncol - 1)
+      up <- ifelse(last.row,NA,index + ncol)
+      up.right <- ifelse(last.row | last.column, NA,index + ncol + 1)
+      right <- ifelse(last.column, NA, index + 1)
+      down.right <- ifelse(first.row | last.column, NA, index - ncol + 1)
+      down <- ifelse(first.row, NA, index - ncol)
+      down.left <- ifelse(first.row | first.column , NA, index - ncol - 1)
+      
+      adj <- c()
+      if(!is.na(left)) {
+        if(G[left] != 0) {
+          adj <- c(adj,"W" = left) 
+        }
+      }
+      if(!is.na(up.left)){
+        if(G[up.left] != 0) {
+          adj <- c(adj,"NW" = up.left)  
+        }
+      }
+      if(!is.na(up)) {
+        if(G[up] != 0){
+          adj <- c(adj,"N" = up)
+        }
+      }
+      if(!is.na(up.right)) {
+        if(G[up.right] != 0){
+          adj <- c(adj,"NE" = up.right)
+        }
+      }
+      if(!is.na(right)) {
+        if(G[right] != 0){
+          adj <- c(adj,"E"= right)
+        }
+      }
+      if(!is.na(down.left)) {
+        if(G[down.left] != 0){
+          adj <- c(adj,"SE" = down.left)
+        }
+      }
+      if(!is.na(down)) {
+        if(G[down] != 0){
+          adj <- c(adj,"S" = down)
+        }
+      }
+      if(!is.na(down.right)) {
+        if(G[down.right] != 0){
+          adj <- c(adj,"SW" = down.right)
+        }
+      }
+      
+      adj.list[[index]] <- adj
+    } 
+    else {
+      adj.list[[index]] <- c("NA" = NA)
+    }
+  }
+  return(adj.list)
+}
+
+
+adaptive.sample.confint.fun <- function(y,m,n,N) {
+  mu.hat <- 1/n*sum(y/m)
+  s.y.2 <- var(y/m)
+  v.mu <- (1-n/N)*s.y.2/n
+  c("mu.hat"=mu.hat,
+    "s.y.2"=s.y.2,
+    "v.mu"=v.mu,
+    "var"=2*sqrt(v.mu),
+    "lower" = mu.hat - 2*sqrt(v.mu),
+    "upper" = mu.hat + 2*sqrt(v.mu)
+  )
+}
+
+
+getEdges <- function(world,adaptive){
+  if(adaptive == TRUE)
+    world.adj <- adjlist.adaptive(figure10.2)
+  else
+    world.adj <- adjlist(figure10.2)
+  edge.list <- c()
+  for(i in 1:length(world.adj)){
+    for(j in 1:length(world.adj[[i]])){
+      if(i <= ifelse(!gtools::invalid(world.adj[[i]][j]),world.adj[[i]][j],0)){
+        edge.list <- c(edge.list,i,ifelse(!gtools::invalid(world.adj[[i]][j]),world.adj[[i]][j],i))
+      }
+    }
+  }
+  edge.list
+}
+
+
+Queue <- setRefClass(Class = "Queue",
+                     fields = list(
+                       name = "character",
+                       data = "list"
+                     ),
+                     methods = list(
+                       size = function() {
+                         'Returns the number of items in the queue.'
+                         return(length(data))
+                       },
+                       #
+                       push = function(item) {
+                         'Inserts element at back of the queue.'
+                         data[[size()+1]] <<- item
+                       },
+                       #
+                       pop = function() {
+                         'Removes and returns head of queue (or raises error if queue is empty).'
+                         if (size() == 0) stop("queue is empty!")
+                         value <- data[[1]]
+                         data[[1]] <<- NULL
+                         value
+                       },
+                       #
+                       initialize=function(...) {
+                         callSuper(...)
+                         #
+                         # Initialise fields here (place holder)...
+                         #
+                         .self
+                       },
+                       empty=function(...){
+                         return(size() == 0)
+                       }
+                     )
+)
+
+
+BFS <- function(V,G.adj,s){
+  d <- rep(0,nrow(V)*ncol(V))
+  p <- rep(0,nrow(V)*ncol(V))
+  for(u in 1:length(V)){
+    d[u] <- -1
+    p[u] <- u
+  }
+  d[s] <- 0
+  Q <- Queue$new()
+  Q$push(s)
+  id <- c()
+  while(!Q$empty()){
+    u <- Q$pop()
+    id <- c(id,u)
+    if(!is.na(G.adj[u])){
+      for(v in G.adj[[u]]){
+        if(d[v] == -1){
+          d[v] <- d[u] + 1
+          p[v] <- u
+          Q$push(v)
+        }
+      } 
+    }
+  }
+  return(list("adaptive.sample" = data.frame("y" = sum(V[d != -1]),"m" = length(d[d != -1])),
+              "sampled.squares" = data.frame("id" = id, "yi" = V[id]), 
+              "d" = matrix(d, nrow = nrow(V), ncol=ncol(V)), 
+              "p" = matrix(p, nrow = nrow(V), ncol=ncol(V))))
+}
+
+
+
+plotly.distance <- function(o.world,world,s){
+  gg <- melt.matrix(world) %>% 
+    mutate(id = getid(x,y,ncol(world)), 
+           actual.value = as.vector(o.world),
+           distance = value, 
+           x = x, 
+           y = y) %>% 
+    
+    ggplot(aes(x = as.factor(x), 
+               y = as.factor(y),
+               "X" = x,
+               "Y" = y,
+               "id" = id,
+               "distance" = distance,
+               "actual.value" = actual.value)) + 
+    geom_raster(aes(fill = value, alpha = value/max(value))) + 
+    scale_fill_gradient(low="grey90",high="red") + 
+    geom_text(aes(label = ifelse(value == -1,"inf",value))) +
+    theme(panel.background = element_blank()) + labs(x = "X",y = "Y") +
+    ggtitle(paste("Value of d, distance from s = ",s)) + theme(legend.position = "none")
+  
+  ggplotly(gg, tooltip = c("X","Y","distance","id","actual.value"))
+}
+
+
+
+plotly.parent <- function(o.world,world,name,cols) {
+  gg <- melt.matrix(world) %>% 
+    mutate(id = getid(x,y,ncol(world)), 
+           actual.value = as.vector(o.world), 
+           parent = value, x = x, y = y) %>% 
+    ggplot(aes(x = as.factor(x), 
+               y = as.factor(y),
+               "X" = x,
+               "Y" = y,
+               "id" = id,
+               "parent" = parent,
+               "actual.value" = actual.value)) + 
+    geom_raster(aes(fill = as.factor(value))) + 
+    scale_fill_manual(values=cols) +
+    geom_text(aes(label = ifelse(value == -1,"inf",value))) +
+    theme(panel.background = element_blank()) + labs(x = "X",y = "Y") +
+    ggtitle("Value of p, parent of each cell/vertex") + theme(legend.position = "none")
+  
+  ggplotly(gg, tooltip = c("X","Y","parent","id","actual.value"))
+}
+
+
+
+adaptive.sample <- function(world, vertecies){
+  world.adj <- adjlist.adaptive(world)
+  samples <- data.frame("y" = numeric(0),"m" = numeric(0))
+  for(i in vertecies){
+    samples <- rbind(samples,BFS(world,world.adj,i)$adaptive.sample)
+  }
+  return(samples)
+}
+
+
+
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+####       Estimatie COVID-19 Cases Using Adaptive Sampling         ####
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+
+# Using Iloilo COVID Data Matrix
+
+in.samp.size <- 1500   # Can be 100, 500, etc.
+
+est <- vector()
+f.sample.size <- vector()
+
+start <- Sys.time()
+for(i in 1:100) {
+  set.seed(453*i)
+  in.samp <- sample(c(1:(652*652)),in.samp.size)
+  
+  
+  ad.samples.ilo <- adaptive.sample(iloilo, in.samp)
+  
+  
+  est[i] <- adaptive.sample.confint.fun(ad.samples.ilo$y,
+                                     ad.samples.ilo$m,
+                                     nrow(ad.samples.ilo),
+                                     nrow(iloilo)*ncol(iloilo)
+  )[[1]]
+  
+  f.sample.size[i] <- sum(ad.samples.ilo$m)
+}
+end <- Sys.time()
+f.sample.size <- round(mean(f.sample.size))
+mean(est); sd(est)
+
+
+
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+####     Estimate COVID-19 cases using SRSWOR and Stratified        ####
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+# Using SRSWOR
+est2 <- vector()
+
+for(i in 1:200) {
+  set.seed(345*i)
+  srswor.samp <- sample(c(1:dim(iloilo.d)[1]), f.sample.size)
+  sample.data <- iloilo.d[srswor.samp,]
+  sample.data$N <- 425104
+  
+  srswor <- svydesign(ids=~1, data = sample.data, fpc = ~N)
+  est2[i] <- svymean(~ind.cases, design = srswor)[[1]]
+}
+mean(est2); sd(est2)
+
+
+
+# Using Stratified Sampling
+
+N_h <- c((400*281),(252*281),(295*186),(295*185),
+         (357*141),(217*230),(140*230))
+N <- 425104
+
+# Compute sample size per stratum
+n_h <- vector()
+for(i in 1:7) {
+  n_h[i] <- round((N_h[i]/N)*f.sample.size)
+}
+
+est3 <- vector()
+for(j in 1:200) {
+  stra.samples <- data.frame()
+  for(i in 1:7) {
+    dat <- subset(iloilo.d, iloilo.d$district == i)
+    set.seed(28*i*j)    
+    srs.stratum <- sample(c(1:dim(dat)[1]), n_h[i])
+    dat <- dat[srs.stratum,]
+    dat$N <- N_h[i]
+    stra.samples <- rbind(stra.samples, dat)
+  }
+  
+  stratified <- svydesign(id = ~1, strata=~district, 
+                          data=stra.samples, fpc=~N)
+  
+  
+  est3[j] <- svymean(~ind.cases, design = stratified)[[1]]
+}
